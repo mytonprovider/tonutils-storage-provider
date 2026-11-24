@@ -18,7 +18,7 @@ jobs:
           git clone --bare https://x-access-token:$T@github.com/mytonprovider/$R r && cd r
           git fetch https://github.com/xssnick/$R master --tags
           git push origin FETCH_HEAD:refs/heads/master
-          new=$(comm -23 <(git tag -l 'v*' | sort) <(git branch -l 'v*' --format='%(refname:short)' | sort) | jq -Rnc '[inputs]')
+          new=$(comm -23 <(git tag -l 'v*' | sort) <(git branch -l 'v*' --format='%(refname:lstrip=2)' | sort) | jq -Rnc '[inputs]')
           git push origin $(git tag -l 'v*' | sed 's#.*#refs/tags/&^{commit}:refs/heads/&#')
           echo "new=$new" >> "$GITHUB_OUTPUT"
   image:
