@@ -1,0 +1,43 @@
+name: image
+on:
+  workflow_call:
+    inputs:
+      version: {type: string, required: true}
+  workflow_dispatch:
+    inputs:
+      version: {description: upstream tag, required: true}
+permissions:
+  contents: read
+  packages: write
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          T: ${{ github.token }}
+          A: ${{ github.actor }}
+          N: ${{ github.repository }}
+          V: ${{ inputs.version }}
+        run: |
+          [[ $V =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          tok=$(curl -sf --max-time 30 -u "$A:$T" "https://ghcr.io/token?scope=repository:$N:pull,push" | jq -r .token)
+          code=$(curl -s --max-time 30 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $tok" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/$N/manifests/$V")
+          echo "$V: manifest $code"
+          [ "$code" = 200 ] && exit 0
+          [ "$code" = 404 ]
+          git clone --depth 1 "https://github.com/$N" r
+          git clone --depth 1 --branch "$V" "https://github.com/$N" r/src
+          cd r
+          go=$(sed -n 's/^go \([0-9]*\.[0-9]*\).*/\1/p' src/go.mod)
+          docker build --provenance=false --build-arg GO="$go" --build-arg VERSION="$V" \
+            --label org.opencontainers.image.source="https://github.com/$N" \
+            --label org.opencontainers.image.revision="$(git -C src rev-parse HEAD)" \
+            --label org.opencontainers.image.version="$V" \
+            --label org.opencontainers.image.created="$(date -u +%FT%TZ)" \
+            --label org.opencontainers.image.licenses=MIT \
+            -t "ghcr.io/$N:$V" .
+          docker run --rm "ghcr.io/$N:$V" --version
+          echo "$T" | docker login ghcr.io -u "$A" --password-stdin
+          docker push "ghcr.io/$N:$V"
